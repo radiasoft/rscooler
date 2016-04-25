@@ -1,0 +1,51 @@
+% 5.0 sto beta
+% 0.0 sto alpha
+% 1 alpha alpha * - beta / sto gamma
+
+
+!########################
+!Flat to Round Transforms
+!########################
+
+!!!Full Transform for arbitrary alpha and finite y distribution
+
+FBT: EMATRIX, ORDER=1, &
+		R11 = "1.0 alpha + 0.5 *", R12 = "beta 0.5 *", R13 = "1.0 alpha - 0.5 *", R14 = "beta -1.0 * 0.5 *", &
+		R21 = "-1.0 gamma * 0.5 *", R22 = "1 alpha - 0.5 *", R23 = "gamma 0.5 *", R24 = "1.0 alpha + 0.5 *", &
+		R31 = "1.0 alpha - 0.5 *", R32 = "-1.0 beta * 0.5 *", R33 = "1.0 alpha + 0.5 *", R34 = "beta 0.5 *", &
+		R41 = "gamma 0.5 *", R42 = "1 alpha + 0.5 *", R43 = "-1.0 gamma * 0.5 *", R44 = "1 alpha - 0.5 *", &
+		R55 = 1, R66 = 1
+
+
+!!!Assumes alpha=0 and y distribution negligible 
+
+FBTApprox: EMATRIX, ORDER=1, &
+		R11 = "0.5", R12 = "beta 0.5 *", &
+		R21 = "-0.5  beta /", R22 = "0.5", &
+		R31 = "0.5", R32 = "-0.5 beta *",  &
+		R41 = "0.5 beta /", R42 = "0.5",  &
+		R55 = 1, R66 = 1
+
+
+!########################
+!Round ot Flat Transforms
+!########################
+
+RBT: EMATRIX, ORDER=1, &
+		R11 = "1.0 alpha + 0.5 *", R12 = "beta 0.5 *", R13 = "alpha 1.0 - 0.5 *", R14 = "beta 1.0 * 0.5 *", &
+		R21 = "-1.0 gamma * 0.5 *", R22 = "1 alpha - 0.5 *", R23 = "gamma -0.5 *", R24 = "1.0 alpha + -0.5 *", &
+		R31 = "alpha 1.0 - 0.5 *", R32 = "1.0 beta * 0.5 *", R33 = "1.0 alpha + 0.5 *", R34 = "beta 0.5 *", &
+		R41 = "gamma -0.5 *", R42 = "1 alpha + -0.5 *", R43 = "-1.0 gamma * 0.5 *", R44 = "1 alpha - 0.5 *", &
+		R55 = 1, R66 = 1
+
+!##########################
+!Magnetic Elements & Drifts
+!##########################
+
+
+SOL: SOLE, L = 1.0, KS = "1 beta / 3 *"
+
+
+
+
+TRANSFORM: LINE=(FBT,SOL,RBT)

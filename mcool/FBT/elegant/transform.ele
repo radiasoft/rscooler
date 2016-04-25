@@ -1,0 +1,65 @@
+&run_setup
+   lattice     = "transformLine.lte"
+   use_beamline= TRANSFORM
+   final       = %s.fin,
+   centroid    = %s.cen,
+   sigma       = %s.sig,
+   output      = "output.bun",
+   default_order = 1,
+   p_central_mev = 50
+&end
+
+&run_control
+&end
+
+!&matrix_output
+	SDDS_output = transportmatrix.sdds
+	SDDS_output_order = 2
+	start_from = MATMARK
+	output_at_each_step = 1
+!&end
+
+!###################################
+!BUNCH CONTROL
+!###################################
+
+&twiss_output
+   matched=0,
+   beta_x = 5.0,
+   beta_y = 5.0,
+   alpha_x = 0.0,
+   alpha_y = 0.0,
+   filename="%s.twi"
+&end
+
+&bunched_beam
+		bunch = "input.bun",
+        n_particles_per_bunch    = 100000,
+        emit_nx                  = 800e-6,
+        emit_ny                  = 1.0e-6,
+        use_twiss_command_values = 1,
+        momentum_chirp           = 0.0,
+        sigma_dp                 = 0.021,
+        sigma_s                  = 0.0063,
+        distribution_type[0]     = "gaussian","gaussian","hard-edge",
+        distribution_cutoff[0]   = 8,
+        distribution_cutoff[1]   = 8,
+        distribution_cutoff[2]   = 1,
+        symmetrize               = 0,
+        enforce_rms_values[0]    = 1,
+        enforce_rms_values[1]    = 1,
+        enforce_rms_values[2]    = 1
+&end
+
+
+&track
+&end
+
+
+
+
+
+
+
+
+
