@@ -1,0 +1,12 @@
+# execute with: qsub -l nodes=23:amd32 -q amd32 elens_complex_P10000VB0p3-5-0p3T.run -A uslarp
+
+#!/bin/bash
+#PBS -A uslarp
+#PBS -l nodes=23,walltime=24:00:00
+
+cd /fast/uslarp/vmoens/Scripts
+
+/usr/local/openmpi/bin/mpiexec -npernode 1 -np 23 pyMPI elens_complex_P10000VB0p3-5-0p3T.py
+
+echo
+exit
