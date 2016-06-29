@@ -55,12 +55,13 @@ def createKV(npart = ptcl_per_step, vc = beam_beta):
     #Set beam size and emittance
     a = 0.010
     b = 0.010
-    emit = 4. * 1.e-6
-    #Set twiss alpha
+    rmsemit = 1.e-6
+    emit = 4. * rmsemit #geometric,total emittance
+    
+    
+    #twiss alpha - Currently must be zero to give correct distr.
     alphax = 0
     alphay = 0
-
-
     betax = a**2 / emit
     betay = b**2 / emit
     gammax = (1 + alphax**2) / betax
@@ -68,16 +69,21 @@ def createKV(npart = ptcl_per_step, vc = beam_beta):
 
     i = 0
     while i < npart:
-        x = (1.0 - 2.0 * random.random()) * a
-        y = (1.0 - 2.0 * random.random()) * b
-        xp = (1.0 - 2.0 * random.random()) * np.sqrt(gammax * emit)
-        if (x / a)**2 + (y / b)**2 + (a * xp / emit)**2 - 1.0 < 0.0:
-            # print 'circ:',(x / a)**2 + (y / b)**2 
-            # print 'hyper:',(x / a)**2 + (y / b)**2 + (a * xp / emit)**2 - 1.0
-            yp = newton(lambda yp: (x / a)**2 + (y / b)**2 + (a * xp / emit)**2 + (b * yp / emit)**2 - 1.0, np.sqrt(emit* gammay),maxiter = 100)
+        x = y = 20 * max([a,b])
+        while (x / a)**2 + (y / b)**2 > 1: # a little inefficient but averages ~1.5 cycles 
+            x = (1.0 - 2.0 * random.random()) * a
+            y = (1.0 - 2.0 * random.random()) * b
+        
+        R = 1 - (x / a)**2 - (y / b)**2 
 
-            ptcls.append([x,xp,y,yp,0.0,vc*3e8])
-            i += 1
+        theta = random.random() * 2 * np.pi
+
+        xp = np.cos(theta) * (np.sqrt(R) * emit) / a
+        yp = np.sin(theta) * (np.sqrt(R) * emit) / b
+
+        ptcls.append([x,xp,y,yp,0.0,vc*3e8])
+        i += 1
+        #print (x / a)**2 + (y / b)**2 + (xp * a / emit)**2 + (yp * b / emit)**2
 
     return np.array(ptcls)
 
