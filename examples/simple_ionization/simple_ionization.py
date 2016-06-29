@@ -2,8 +2,9 @@
     A simple example for defining and loading a user-defined beam distribution and continuously injecting it.
 """
 from __future__ import division
-from warp_init_tools import *   #Not really used butbrings in ParticleDiagnostic.
-from warp.particles.ionization import *
+from warp_init_tools import *   # Not really used but brings in ParticleDiagnostic.
+from warp.particles.ionization import Ionization
+from rswarp.diagnostics import FieldDiagnostic
 import numpy as np
 import os
 import random
@@ -34,20 +35,17 @@ setup(cgmlog=0)
 ### Create Beam and Set its Parameters ###
 ##########################################
 
-SC = True # Controls field solve
-ptcl_per_step = 3000 # number of particles to inject on each step
-beam_beta = 0.05 # beta = v / c
-
+beam_gamma = 116e3/511e3 + 1
+beam_beta = np.sqrt(1-1/beam_gamma**2)
 
 top.lrelativ = True
 top.relativity = 1
 
-beam = Species(type=Electron, name='e-')
+beam = Species(type=Electron, name='e-', fselfb=beam_beta * clight)
 h2plus = Species(type=Dihydrogen, charge_state=+1, name='H2+', weight=None)
 emittedelec = Species(type=Electron, name='emitted e-', weight=None)
 
-if SC == True:
-    beam.ibeam = 1e-3
+beam.ibeam = 1e-6
 
 ################################
 ### 3D Simulation Parameters ###
@@ -58,37 +56,46 @@ w3d.nx = 64
 w3d.ny = 64
 w3d.nz = 32
 
-w3d.bound0  = dirichlet
-w3d.boundnz = dirichlet
-w3d.boundxy = neumann
-
 #Set boundaries
 w3d.xmmin = -0.16
-w3d.xmmax =  0.16
+w3d.xmmax = 0.16
 w3d.ymmin = -0.16
-w3d.ymmax =  0.16
-w3d.zmmin =  0.0
-w3d.zmmax =  1.0
+w3d.ymmax = 0.16
+w3d.zmmin = 0.0
+w3d.zmmax = 1.0
 
 top.pbound0 = absorb
 top.pboundnz = absorb
 top.pboundxy = reflect
 
-dz =  w3d.zmmax - w3d.zmmin
-top.dt = dz / (1000 * beam_beta * 3e8)
+dz = w3d.zmmax - w3d.zmmin
+# top.dt = dz / (1000 * beam_beta * clight)
+top.dt = (dz / w3d.nz) / (beam_beta * clight) / 5  # 5 timesteps to cross a single cell
+ptcl_per_step = beam.ibeam * top.dt // echarge  # number of particles to inject on each step
+print("Timestep is %.2E s" % top.dt)
 
-top.ibpush   = 1            # set type of pusher to  vXB push without tan corrections
+top.ibpush = 1            # set type of pusher to  vXB push without tan corrections
                             ## 0:off, 1:fast, 2:accurate
 
 # --- Other injection variables - not sure if these are important
 w3d.l_inj_exact = True                    # if true, position and angle of injected particle are
-w3d.l_inj_area         = False            # Not sure what this does
+w3d.l_inj_area = False            # Not sure what this does
 
 w3d.solvergeom = w3d.XYZgeom
 
-if SC == True:
-    solver = MultiGrid3D() # probably will be magnetostaticMG in later runs
-    registersolver(solver)
+w3d.bound0 = dirichlet
+w3d.boundnz = dirichlet
+w3d.boundxy = neumann
+
+solver = MagnetostaticMG()
+diagF = FieldDiagnostic.MagnetostaticFields(solver,top)
+installafterstep( diagF.write )
+# solver = MultiGrid3D()
+# diagF = FieldDiagnostic.ElectrostaticFields(solver,top)
+# installafterstep( diagF.write )
+solver.mgtol = [0.01]*3
+registersolver(solver)
+
 
 
 def createKV(npart = ptcl_per_step, vc = beam_beta):
@@ -161,20 +168,19 @@ ioniz = Ionization(stride=100,
 
 target_density = 1.e20
 
-# ------------ e + H2 -> e + e + H2+
+# ------------ e + H2 -> 2e + H2+
 
-beam_gamma = 1 / np.sqrt(1-beam_beta**2)
-beamke = (beam_gamma-1) * 511e3 # beam kinetic energy in eV
 
 ioniz.add(incident_species=beam,
           emitted_species=[h2plus,emittedelec],
           emitted_energy0=[1,1], # Array of emission energies (in eV) corresponding to emitted_species
           emitted_energy_sigma=[0,0.1],
-          # Q: What is the distribution of angles of the emitted species?
           l_remove_target=False, # Flag for removing target particle
-          cross_section=1.5e-21, # Where does this figure come from?
+          # Can this be a function of incidence parameters like energy?
+          cross_section=4e-23, # Where does this figure come from?
         #   l_verbose=True,
           ndens=target_density)
+
 
 derivqty() #Sets addition derived parameters (such as beam.vbeam)
 
@@ -184,8 +190,8 @@ derivqty() #Sets addition derived parameters (such as beam.vbeam)
 
 
 # --- Specify injection of the particles
-top.inject      = 6                       # 2 means space-charge limited injection, 6 is user specified
-top.npinject    = ptcl_per_step           # Approximate number of particles injected each step
+top.inject = 6                       # 2 means space-charge limited injection, 6 is user specified
+top.npinject = ptcl_per_step           # Approximate number of particles injected each step
 top.ainject = 0.0008                      # Must be set even for user defined injection, doesn't seem to do anything
 top.binject = 0.0008                      # Must be set even for user defined injection, doesn't seem to do anything
 
@@ -202,8 +208,8 @@ top.binject = 0.0008                      # Must be set even for user defined in
 diagP = ParticleDiagnostic( period=1, top=top, w3d=w3d,
         species= { species.name : species for species in listofallspecies },
         comm_world=comm_world, lparallel_output=False, write_dir = diagDir[:-4] )
-
 installafterstep( diagP.write )
+
 
 package("w3d")
 generate()
@@ -216,6 +222,6 @@ diagP.period = 10
 
 step(49)
 
-uninstalluserinjection(injectelectrons) # Can uninstall injection to stop
+# uninstalluserinjection(injectelectrons) # Can uninstall injection to stop
 
 step(250)
