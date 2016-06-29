@@ -1,313 +1,221 @@
 """
-From the minimum change from the PXIE LEBT input
-IOTA e-column simulation
+    A simple example for defining and loading a user-defined beam distribution and continuously injecting it.
 """
-
-import sys
-from warp import *
-from warp.run_modes.egun_like import *  # Need full path in module import
-from warp.utils.timedependentvoltage import TimeVoltage
+from __future__ import division
+from warp_init_tools import *   #Not really used butbrings in ParticleDiagnostic.
 from warp.particles.ionization import *
-from warp.particles.extpart import ZCrossingParticles
-from warp.data_dumping.openpmd_diag import particle_diag
-from warp.data_dumping.openpmd_diag import field_diag
-import numpy
-import mpi4py
-import datetime
+import numpy as np
+import os
+import random
+from scipy.optimize import newton
+from sys import exit
 
 
-# which geometry to use 2d or 3d
-# w3d.solvergeom = w3d.RZgeom
-w3d.solvergeom = w3d.XYZgeom
 
+diagDir = 'diags/xySlice/hdf5'
 
-#define some strings that go into the output file
-top.pline1     = "simple_ionization"
-top.pline2     = "Demonstration of simple ionization, e- + H2 -> e- + e- + H2+"
-top.runmaker   = "James Gerity (jgerity@tamu.edu)"
-
-# --- Invoke setup routine for the plotting
-setup()
-# setup(makepsfile=1, cgmlog=1)
-
-# --- Set basic beam parameters
-ibeaminit = 500e-3   # in A, from Fermilab experiment
-ekininit = 114e6  # in eV, from Fermilab experiment
-
-# Scan parameters
-Vbias = -100.   # Should be negative
-Bsol = 0.0
-
-# --- Set input parameters describing the 3d simulation
-
-w_cyclotron = echarge*Bsol/emass # Larmor frequency
-top.dt = 1e-9  # fast time step for testing
-print("Timestep is %E s" % top.dt)
-
-top.npinject  = 50.  # Approximate number of particles injected each step
-sw = ibeaminit * top.dt / echarge / top.npinject
-
-# relativistic correction
-gamma = numpy.sqrt(1 + ekininit / 511.e6)
-beta = numpy.sqrt(1. - 1./(gamma**2))
-print("Relativistic factors are gamma=%.5f, beta=%.5f" % (gamma,beta))
-
-# --- define Species
-electrons = Species(type=Electron, name='e-', weight= sw)
-h2plus = Species(type=Dihydrogen, charge_state=+1, name='H2+', weight=None)
-
-# jslist is list of species, top.finject[n,i] is fraction of species i to inject at source n
-# Inject only electrons
-top.finject[0, electrons.jslist[0]] = 1
-top.finject[0, h2plus.jslist[0]]    = 0
-
-# --- starting conditions for the ion and electron beam
-top.a0       = 0.01
-top.b0       = 0.01
-top.ap0      = 0.0
-top.bp0      = 0.0
-top.vbeam    = .0e0  # In derivqty(), the beam velocity will be calculated by ekininit anyhow.
-top.emit     = 2.e-6 # To define distrbtn, it is likely that we need emittance
-top.ibeam    = ibeaminit
-top.ekin     = ekininit   # in eV
-top.vthz     = 0.0 #convert from eV to m/s
-top.lrelativ = true
-derivqty()
-
-w3d.l4symtry = false  # four-fold symmetry
-w3d.l2symtry = false  # two-fold symmetry
-
-vz = beta*clight
-
-# --- Set boundary conditions
-
-# ---   for field solve
-w3d.bound0  = neumann #dirichlet
-w3d.boundnz = neumann
-w3d.boundxy = dirichlet #neumann
-
-# ---   for particles
-top.pbound0  = absorb
-top.pboundnz = absorb
-top.prwall   = 25.e-3 # 25 mm
-
-le = 1.0 # length of the domain
-
-# --- Set field grid size
-w3d.xmmin = -top.prwall
-w3d.xmmax = +top.prwall
-w3d.ymmin = -top.prwall
-w3d.ymmax = +top.prwall
-w3d.zmmin =  0.0 - 0.1
-w3d.zmmax  = le + 0.1
-
-if w3d.l4symtry:
-    w3d.xmmin = 0.
-if w3d.l2symtry or w3d.l4symtry:
-    w3d.ymmin = 0.
-
-# set grid spacing
-w3d.dx = (2.*top.prwall)/100.
-w3d.dy = (2.*top.prwall)/100.
-w3d.dz = 1./100.
-
-# --- Field grid dimensions - nx and ny do not need to be even
-w3d.nx    = int((w3d.xmmax - w3d.xmmin)/w3d.dx)
-w3d.xmmax = w3d.xmmin + w3d.nx*w3d.dx
-w3d.ny    = int((w3d.ymmax - w3d.ymmin)/w3d.dy)
-w3d.ymmax = w3d.ymmin + w3d.ny*w3d.dy
-w3d.nz    = int((w3d.zmmax - w3d.zmmin)/w3d.dz)
-w3d.zmmax = w3d.zmmin + w3d.nz*w3d.dz
-
-print("Grid size is %i x %i x %i" % (w3d.nx,w3d.ny,w3d.nz))
-
-# --- Specify injection of the particles
-# --- npmax is the number of simulation particles to create.
-# top.npmax     = 50000
-top.inject    = 1      # 0: no injection, 1: constant current, 2: space-charge limited injection (Child-Langmuir)
-
-top.linj_efromgrid = true  # Turn on transverse E-fields near emitting surface
-top.zinject = w3d.zmmin    # initial z of particle injection
-top.ibpush   = 1           # Specifies type of B-advance; 0 - none, 1 - fast
-
-w3d.distrbtn = "TE" #Pseudo Thermal Equilibrium
-w3d.cylinder = true
-# from w3d.F: --- use random numbers to load particles in polar coordinates
-w3d.ldprfile = "polar"
-
-source_radius = 5.5e-3 # 5.5 mm from MAD
-
-top.ainject = source_radius
-top.binject = source_radius
-w3d.l_inj_user_particles_v = true
-
-def nonlinearsource():
-    if w3d.inj_js == electrons.jslist[0]:
-        np = top.npinject
-        r = source_radius*random.random(np)
-        theta = 2.*pi*random.random(np)
-        x = r*cos(theta)
-        y = r*sin(theta)
-        w3d.npgrp = np
-        gchange('Setpwork3d')
-        w3d.xt[:] = x
-        w3d.yt[:] = y
-        w3d.uxt[:] = 0.
-        w3d.uyt[:] = 0.
-        w3d.uzt[:] = vz
-
-installuserparticlesinjection(nonlinearsource)
-
-# --- Select plot intervals, etc.
-top.nhist = 1 # Save history data every time step
-top.itplfreq[0:4]=[0,1000000,25,0] # Make plots every 25 time steps
-top.itmomnts[0:4]=[0,1000000,top.nhist,0] # Calculate moments every step
-
-# --- Save time histories of various quantities versus z.
-top.lhcurrz  = true
-top.lhrrmsz  = true
-top.lhxrmsz  = true
-top.lhyrmsz  = true
-top.lhepsnxz = true
-top.lhepsnyz = true
-top.lhvzrmsz = true
-
-# --- Set up fieldsolver - 7 means the multigrid solver
-top.fstype     = 7
-f3d.mgtol      = 1.e-1 # Poisson solver tolerance, in volts
-f3d.mgparam    =  1.5
-f3d.downpasses =  2
-f3d.uppasses   =  2
-
-# --- Generate the PIC code (allocate storage, load ptcls, t=0 plots, etc.)
-package("w3d")
-generate()
-
-now = datetime.datetime.now()
-h5output = 'diags_' + now.strftime("%s")
-
-def cleanupPrevious(outputDirectory = 'diags/hdf5/'):
+def cleanupPrevious(outputDirectory = diagDir):
     if os.path.exists(outputDirectory):
         files = os.listdir(outputDirectory)
         for file in files:
             if file.endswith('.h5'):
                 os.remove(os.path.join(outputDirectory,file))
 
-cleanupPrevious(h5output)
+cleanupPrevious()
 
-#Version of Warp currently installed on Container doesn't handle species weights correctly - 4/21/16
-diagP = particle_diag.ParticleDiagnostic( period=5, top=top, w3d=w3d,
-        write_dir=h5output,
-        species= { species.name : species for species in listofallspecies },
-        particle_data=["position","momentum"],
-        comm_world=comm_world, lparallel_output=True, )
+#########################
+### Initialize Plots  ###
+#########################
+# def setup():
+# 	pass
+setup(cgmlog=0)
 
-installafterstep( diagP.write )
+##########################################
+### Create Beam and Set its Parameters ###
+##########################################
 
-#################################################################################################################
+SC = True # Controls field solve
+ptcl_per_step = 3000 # number of particles to inject on each step
+beam_beta = 0.05 # beta = v / c
 
-beampipe        = ZCylinderOut(radius=top.prwall,     zlower=w3d.zmmin, zupper=w3d.zmmax,voltage= 0.0,  xcent=0,ycent=0,zcent=0)
-electrode_left  = ZCylinderOut(radius=top.prwall*0.9, zlower=0.0-0.05,  zupper=0.0+0.05, voltage= Vbias,xcent=0,ycent=0)
-electrode_right = ZCylinderOut(radius=top.prwall*0.9, zlower=le -0.05,  zupper=le +0.05, voltage= Vbias,xcent=0,ycent=0)
 
-installconductors(beampipe)
-installconductors(electrode_left + electrode_right)
+top.lrelativ = True
+top.relativity = 1
 
-# --- Recalculate the fields
-fieldsolve(-1)
+beam = Species(type=Electron, name='e-')
+h2plus = Species(type=Dihydrogen, charge_state=+1, name='H2+', weight=None)
+emittedelec = Species(type=Electron, name='emitted e-', weight=None)
 
-# target_density = 3.54e19 #1.e-3 torr
-target_density = 1.e20 #1.e-3 torr
+if SC == True:
+    beam.ibeam = 1e-3
 
-# --- setup the charge exchange
-# From ionization.py:
-# stride=100: The stride in the particle loops, controlling how many particles
-#               can under go a collision each time step.
+################################
+### 3D Simulation Parameters ###
+################################
 
-ioniz = Ionization(stride=100, zmin=0., zmax=le)
+#Set cells
+w3d.nx = 64
+w3d.ny = 64
+w3d.nz = 32
+
+w3d.bound0  = dirichlet
+w3d.boundnz = dirichlet
+w3d.boundxy = neumann
+
+#Set boundaries
+w3d.xmmin = -0.16
+w3d.xmmax =  0.16
+w3d.ymmin = -0.16
+w3d.ymmax =  0.16
+w3d.zmmin =  0.0
+w3d.zmmax =  1.0
+
+top.pbound0 = absorb
+top.pboundnz = absorb
+top.pboundxy = reflect
+
+dz =  w3d.zmmax - w3d.zmmin
+top.dt = dz / (1000 * beam_beta * 3e8)
+
+top.ibpush   = 1            # set type of pusher to  vXB push without tan corrections
+                            ## 0:off, 1:fast, 2:accurate
+
+# --- Other injection variables - not sure if these are important
+w3d.l_inj_exact = True                    # if true, position and angle of injected particle are
+w3d.l_inj_area         = False            # Not sure what this does
+
+w3d.solvergeom = w3d.XYZgeom
+
+if SC == True:
+    solver = MultiGrid3D() # probably will be magnetostaticMG in later runs
+    registersolver(solver)
+
+
+def createKV(npart = ptcl_per_step, vc = beam_beta):
+    ptcls = []
+
+
+    #Set beam size and emittance
+    a = 0.010
+    b = 0.010
+    emit = 4. * 1.e-6
+    #Set twiss alpha
+    alphax = 0
+    alphay = 0
+
+    zemit = dz/5 # emitting surface 1/5th of a cell forward
+
+    betax = a**2 / emit
+    betay = b**2 / emit
+    gammax = (1 + alphax**2) / betax
+    gammay = (1 + alphay**2) / betay
+
+    i = 0
+    while i < npart:
+        x = (1.0 - 2.0 * random.random()) * a
+        y = (1.0 - 2.0 * random.random()) * b
+        xp = (1.0 - 2.0 * random.random()) * np.sqrt(gammax * emit)
+        if (x / a)**2 + (y / b)**2 + (a * xp / emit)**2 - 1.0 < 0.0:
+            # print 'circ:',(x / a)**2 + (y / b)**2
+            # print 'hyper:',(x / a)**2 + (y / b)**2 + (a * xp / emit)**2 - 1.0
+            yp = newton(lambda yp: (x / a)**2 + (y / b)**2 + (a * xp / emit)**2 + (b * yp / emit)**2 - 1.0, np.sqrt(emit* gammay),maxiter = 100)
+
+            ptcls.append([x,xp,y,yp,zemit,vc*3e8])
+            i += 1
+
+    return np.array(ptcls)
+
+
+ptclArray = createKV()
+
+
+def injectelectrons():
+
+    #Change to x and y angles to velocities
+    beam.addparticles(x=ptclArray[:,0],y=ptclArray[:,2],z=ptclArray[:,4],
+    vx=ptclArray[:,1] * ptclArray[:,5],vy=ptclArray[:,3] * ptclArray[:,5],vz=ptclArray[:,5])
+
+
+
+#Install injector
+installuserinjection(injectelectrons)
+
+
+
+####################################
+### Ionization of background gas ###
+####################################
+
+
+ioniz = Ionization(stride=100,
+    xmin=w3d.xmmin,
+    xmax=w3d.xmmax,
+    ymin=w3d.ymmin,
+    ymax=w3d.ymmax,
+    zmin=w3d.zmmin,
+    zmax=w3d.zmmax,
+    nx=w3d.nx,
+    ny=w3d.ny,
+    nz=w3d.nz,
+    l_verbose=True)
+
+target_density = 1.e20
 
 # ------------ e + H2 -> e + e + H2+
-ioniz.add(incident_species=electrons,
-          emitted_species=[h2plus],
-          emitted_energy0=0, # Array of emission energies corresponding to emitted_species
-          emitted_energy_sigma=0,
+
+beam_gamma = 1 / np.sqrt(1-beam_beta**2)
+beamke = (beam_gamma-1) * 511e3 # beam kinetic energy in eV
+
+ioniz.add(incident_species=beam,
+          emitted_species=[h2plus,emittedelec],
+          emitted_energy0=[1,1], # Array of emission energies (in eV) corresponding to emitted_species
+          emitted_energy_sigma=[0,0.1],
           # Q: What is the distribution of angles of the emitted species?
           l_remove_target=False, # Flag for removing target particle
           cross_section=1.5e-21, # Where does this figure come from?
         #   l_verbose=True,
           ndens=target_density)
 
-ixcenter = int(w3d.nx/2)
-iycenter = int(w3d.ny/2)
-izcenter = int(w3d.nz/2)
+derivqty() #Sets addition derived parameters (such as beam.vbeam)
 
-xcoord = zeros(w3d.nx+1,float)
-for k in range(0, w3d.nx+1):
-    xcoord[k] = w3d.xmmin + k * w3d.dx
+##########################
+### Injection Controls ###
+##########################
 
-zcoord = zeros(w3d.nz+1,float)
-for k in range(0, w3d.nz+1):
-    zcoord[k] = w3d.zmmin + k * w3d.dz
 
-eden_time = []
-col_time = []
+# --- Specify injection of the particles
+top.inject      = 6                       # 2 means space-charge limited injection, 6 is user specified
+top.npinject    = ptcl_per_step           # Approximate number of particles injected each step
+top.ainject = 0.0008                      # Must be set even for user defined injection, doesn't seem to do anything
+top.binject = 0.0008                      # Must be set even for user defined injection, doesn't seem to do anything
 
-plot_repetition = 100
-num_steps = 500
-run_time = 1.e-6
-final_iter = run_time / top.dt
-iter = 0
-diagP.write()
-while(iter < final_iter):
-    if iter % plot_repetition == 0:
-        # ions.ppzx(color=red, titles = 0, view=9, pplimits=(w3d.zmmin, w3d.zmmax, -top.prwall, top.prwall))
-        # pfzx(fill=1,filled=0, plotsg=0,titles = 0, cond=0,view=9)
 
-        h2plus.ppzx(color=blue, titles = 0,msize=100, view=10)
-        electrons.ppzx(color=green, titles = 0, msize=100, view=10, pplimits=(w3d.zmmin, w3d.zmmax, -top.prwall, top.prwall))
-        fma()
 
-        # iden  = ions.get_density()
-        eden  = electrons.get_density()
-        hden  = h2plus.get_density()
 
-        ptitles(titlet = "Density (#/m3) at x=y=0", titleb = "Z (m)", titlel =" ")
-        limits(w3d.zmmin, w3d.zmmax)
-        # pla(iden[ixcenter,iycenter,0:], zcoord, color = red)
-        pla(eden[ixcenter,iycenter,0:], zcoord, color = green)
-        pla(hden[ixcenter,iycenter,0:], zcoord, color = blue)
-        fma()
 
-        ptitles(titlet = "Density (#/m3) at ecolumn center", titleb = "X (m)", titlel =" ")
-        limits(w3d.xmmin, w3d.xmmax)
-        # pla(iden[0:,iycenter,izcenter], xcoord, color = red)
-        pla(eden[0:,iycenter,izcenter], xcoord, color = green)
-        pla(hden[0:,iycenter,izcenter], xcoord, color = blue)
-        fma()
 
-        # longitudinal electric fields
-        ez = getselfe(comp="z", ix = ixcenter,  iy = iycenter)
-        ptitles(titlet = "Self electric fields (V/m) along the beam", titleb = "Z (m)",titlel =" ")
-        limits(w3d.zmmin, w3d.zmmax)
-        pla(ez, zcoord,  color= red)
-        fma()
 
-        # transverse electric fields
-        ex = getselfe(comp="x", iy = iycenter,  iz = izcenter)
-        ptitles(titlet = "Self electric fields (V/m) along the beam", titleb = "X (m)",titlel =" ")
-        limits(w3d.xmmin, w3d.xmmax)
-        pla(ex, xcoord,  color= red)
-        fma()
+############################
+### Particle Diagnostics ###
+############################
 
-        eden_time.append( (eden[ixcenter,iycenter,izcenter] + eden[ixcenter,iycenter,izcenter-1] + eden[ixcenter,iycenter,izcenter+1])/3. )
-        col_time.append( top.time )
+diagP = ParticleDiagnostic( period=1, top=top, w3d=w3d,
+        species= { species.name : species for species in listofallspecies },
+        comm_world=comm_world, lparallel_output=False, write_dir = diagDir[:-4] )
 
-    hppnum()
+installafterstep( diagP.write )
 
-    step(1)
-    iter = iter + 1
+package("w3d")
+generate()
 
-#time history of electron desntiy
-ptitles(titlet = "Electron density (#/m3) at center", titleb = "Time (s)", titlel =" ")
-pla(eden_time, col_time,  color= red)
-fma()
+
+step(1)
+
+diagP.write() # You really don't want 1000 diagnostic files
+diagP.period = 10
+
+step(49)
+
+uninstalluserinjection(injectelectrons) # Can uninstall injection to stop
+
+step(250)
