@@ -67,20 +67,20 @@ w3d.zmmax = 1.0
 
 top.pbound0 = absorb
 top.pboundnz = absorb
-top.pboundxy = reflect
+top.pboundxy = absorb
 
-dz = w3d.zmmax - w3d.zmmin
-# top.dt = dz / (1000 * beam_beta * clight)
-top.dt = (dz / w3d.nz) / (beam_beta * clight) / 5  # 5 timesteps to cross a single cell
+Lz = (w3d.zmmax - w3d.zmmin)
+dz =  Lz / w3d.nz
+top.dt = (dz) / (beam_beta * clight) / 3  # 3 timesteps to cross a single cell
 ptcl_per_step = beam.ibeam * top.dt // echarge  # number of particles to inject on each step
 print("Timestep is %.2E s" % top.dt)
 
-top.ibpush = 1            # set type of pusher to  vXB push without tan corrections
-                            ## 0:off, 1:fast, 2:accurate
+top.ibpush = 2            # set type of pusher to  vXB push without tan corrections
+                          # 0:off, 1:fast, 2:accurate
 
-# --- Other injection variables - not sure if these are important
-w3d.l_inj_exact = True                    # if true, position and angle of injected particle are
-w3d.l_inj_area = False            # Not sure what this does
+# --- Other injection variables
+w3d.l_inj_exact = True
+w3d.l_inj_area = False
 
 w3d.solvergeom = w3d.XYZgeom
 
@@ -89,8 +89,8 @@ w3d.boundnz = dirichlet
 w3d.boundxy = neumann
 
 solver = MagnetostaticMG()
-diagF = FieldDiagnostic.MagnetostaticFields(solver, top)
-installafterstep( diagF.write )
+# diagF = FieldDiagnostic.MagnetostaticFields(solver, top)
+# installafterstep( diagF.write )
 # solver = MultiGrid3D()
 # diagF = FieldDiagnostic.ElectrostaticFields(solver, top)
 # installafterstep( diagF.write )
@@ -108,7 +108,7 @@ ptclTrans = createKV(
 )
 
 vz = beam_beta * clight
-zemit = dz / w3d.nz / 5  # emitting surface 1/5th of a cell forward
+zemit = dz / 5  # emitting surface 1/5th of a cell forward
 ptclArray = np.column_stack((ptclTrans, [zemit] * ptcl_per_step, [vz] * ptcl_per_step))
 
 def injectelectrons():
@@ -151,6 +151,8 @@ target_density = 1.e20
 
 # ------------ e + H2 -> 2e + H2+
 
+def crosssection(vi=None):
+    return 4e-23  # This figure from NIST's impact ionization database: http://www.nist.gov/pml/data/ionization/
 
 ioniz.add(incident_species=beam,
           emitted_species=[h2plus, emittedelec],
@@ -158,7 +160,7 @@ ioniz.add(incident_species=beam,
           emitted_energy_sigma=[0, 0.1],
           l_remove_target=False, # Flag for removing target particle
           # Can this be a function of incidence parameters like energy?
-          cross_section=4e-23, # Where does this figure come from?
+          cross_section=crosssection,
         #   l_verbose=True,
           ndens=target_density)
 
