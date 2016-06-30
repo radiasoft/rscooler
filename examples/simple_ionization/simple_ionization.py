@@ -5,6 +5,7 @@ from __future__ import division
 from warp_init_tools import *   # Not really used but brings in ParticleDiagnostic.
 from warp.particles.ionization import Ionization
 from rswarp.diagnostics import FieldDiagnostic
+from rswarp.utilities.beam_distributions import createKV
 import numpy as np
 import os
 import random
@@ -20,7 +21,7 @@ def cleanupPrevious(outputDirectory = diagDir):
         files = os.listdir(outputDirectory)
         for file in files:
             if file.endswith('.h5'):
-                os.remove(os.path.join(outputDirectory,file))
+                os.remove(os.path.join(outputDirectory, file))
 
 cleanupPrevious()
 
@@ -88,59 +89,39 @@ w3d.boundnz = dirichlet
 w3d.boundxy = neumann
 
 solver = MagnetostaticMG()
-diagF = FieldDiagnostic.MagnetostaticFields(solver,top)
+diagF = FieldDiagnostic.MagnetostaticFields(solver, top)
 installafterstep( diagF.write )
 # solver = MultiGrid3D()
-# diagF = FieldDiagnostic.ElectrostaticFields(solver,top)
+# diagF = FieldDiagnostic.ElectrostaticFields(solver, top)
 # installafterstep( diagF.write )
 solver.mgtol = [0.01]*3
 registersolver(solver)
 
 
 
-def createKV(npart = ptcl_per_step, vc = beam_beta):
-    ptcls = []
+ptclTrans = createKV(
+    npart=ptcl_per_step,
+    a=0.010,
+    b=0.010,
+    emitx=4. * 1.e-6,
+    emity=4. * 1.e-6
+)
 
-
-    #Set beam size and emittance
-    a = 0.010
-    b = 0.010
-    emit = 4. * 1.e-6
-    #Set twiss alpha
-    alphax = 0
-    alphay = 0
-
-    zemit = dz/5 # emitting surface 1/5th of a cell forward
-
-    betax = a**2 / emit
-    betay = b**2 / emit
-    gammax = (1 + alphax**2) / betax
-    gammay = (1 + alphay**2) / betay
-
-    i = 0
-    while i < npart:
-        x = (1.0 - 2.0 * random.random()) * a
-        y = (1.0 - 2.0 * random.random()) * b
-        xp = (1.0 - 2.0 * random.random()) * np.sqrt(gammax * emit)
-        if (x / a)**2 + (y / b)**2 + (a * xp / emit)**2 - 1.0 < 0.0:
-            # print 'circ:',(x / a)**2 + (y / b)**2
-            # print 'hyper:',(x / a)**2 + (y / b)**2 + (a * xp / emit)**2 - 1.0
-            yp = newton(lambda yp: (x / a)**2 + (y / b)**2 + (a * xp / emit)**2 + (b * yp / emit)**2 - 1.0, np.sqrt(emit* gammay),maxiter = 100)
-
-            ptcls.append([x,xp,y,yp,zemit,vc*3e8])
-            i += 1
-
-    return np.array(ptcls)
-
-
-ptclArray = createKV()
-
+vz = beam_beta * clight
+zemit = dz / w3d.nz / 5  # emitting surface 1/5th of a cell forward
+ptclArray = np.column_stack((ptclTrans, [zemit] * ptcl_per_step, [vz] * ptcl_per_step))
 
 def injectelectrons():
 
     #Change to x and y angles to velocities
-    beam.addparticles(x=ptclArray[:,0],y=ptclArray[:,2],z=ptclArray[:,4],
-    vx=ptclArray[:,1] * ptclArray[:,5],vy=ptclArray[:,3] * ptclArray[:,5],vz=ptclArray[:,5])
+    beam.addparticles(
+        x=ptclArray[:, 0],
+        y=ptclArray[:, 2],
+        z=ptclArray[:, 4],
+        vx=ptclArray[:, 1] * ptclArray[:, 5],
+        vy=ptclArray[:, 3] * ptclArray[:, 5],
+        vz=ptclArray[:, 5]
+    )
 
 
 
@@ -172,9 +153,9 @@ target_density = 1.e20
 
 
 ioniz.add(incident_species=beam,
-          emitted_species=[h2plus,emittedelec],
-          emitted_energy0=[1,1], # Array of emission energies (in eV) corresponding to emitted_species
-          emitted_energy_sigma=[0,0.1],
+          emitted_species=[h2plus, emittedelec],
+          emitted_energy0=[1, 1], # Array of emission energies (in eV) corresponding to emitted_species
+          emitted_energy_sigma=[0, 0.1],
           l_remove_target=False, # Flag for removing target particle
           # Can this be a function of incidence parameters like energy?
           cross_section=4e-23, # Where does this figure come from?
