@@ -166,8 +166,31 @@ target_density = 1.e20
 
 # ------------ e + H2 -> 2e + H2+
 
-def crosssection(vi=None):
-    return 4e-23  # This figure from NIST's impact ionization database: http://www.nist.gov/pml/data/ionization/
+def h2_ioniz_crosssection(vi=None):
+    """
+    Compute the total cross-section for impact ionization of H2 by e-, per David's formula
+    vi - incident electron energy in m/s
+    """
+    bohr_radius = 5.29177e-11  # Bohr Radius
+    I = 15.42593  # Threshold ionization energy (in eV), from the NIST Standard Reference Database (via NIST Chemistry WebBook)
+    R = 13.60569  # Rydberg energy (in eV)
+    gamma_in = 1. / np.sqrt(1 - (vi/clight)**2)
+    T = (gamma_in - 1) * emass * clight**2 / jperev # kinetic energy (in eV) of incident electron
+    t = T / I  # normalized kinetic energy
+    S = 4 * np.pi * bohr_radius**2 * (R/I)**2
+
+    # species-dependent fitting parameters
+    n = 2.4
+    a1 = 0.74
+    a2 = 0.87
+    a3 = -0.60
+    def g1(t):
+        return (1-t**(1-n)) / (n-1) - (2 / (t+1))**(n/2) * (1 - t**(1-n/2)) / (n-2)
+    def F(t):
+        return 1/t * (a1 * np.log(t) + a2 + 1/t * a3)
+    sigma = S * F(t) * g1(t)
+    return sigma
+    # return 4e-23  # This figure from NIST's impact ionization database: http://www.nist.gov/pml/data/ionization/
 
 ioniz.add(incident_species=beam,
           emitted_species=[h2plus, emittedelec],
@@ -175,7 +198,7 @@ ioniz.add(incident_species=beam,
           emitted_energy_sigma=[lambda vi: 0, lambda vi: 0.1],
           l_remove_target=False, # Flag for removing target particle
           # Can this be a function of incidence parameters like energy?
-          cross_section=crosssection,
+          cross_section=h2_ioniz_crosssection,
         #   l_verbose=True,
           ndens=target_density)
 
