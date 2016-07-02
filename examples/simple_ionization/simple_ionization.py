@@ -166,31 +166,61 @@ target_density = 1.e20
 
 # ------------ e + H2 -> 2e + H2+
 
-def h2_ioniz_crosssection(vi=None):
-    """
-    Compute the total cross-section for impact ionization of H2 by e-, per David's formula
-    vi - incident electron energy in m/s
-    """
-    bohr_radius = 5.29177e-11  # Bohr Radius
-    I = 15.42593  # Threshold ionization energy (in eV), from the NIST Standard Reference Database (via NIST Chemistry WebBook)
-    R = 13.60569  # Rydberg energy (in eV)
-    gamma_in = 1. / np.sqrt(1 - (vi/clight)**2)
-    T = (gamma_in - 1) * emass * clight**2 / jperev # kinetic energy (in eV) of incident electron
-    t = T / I  # normalized kinetic energy
-    S = 4 * np.pi * bohr_radius**2 * (R/I)**2
+bohr_radius = 5.29177e-11  # Bohr Radius
+I = 15.42593  # Threshold ionization energy (in eV), from the NIST Standard Reference Database (via NIST Chemistry WebBook)
+R = 13.60569  # Rydberg energy (in eV)
+S = 4 * np.pi * bohr_radius**2 * (R/I)**2
+fitparametern = 2.4  # species-dependent fitting parameter
 
-    # species-dependent fitting parameters
-    n = 2.4
+def fitF(t):
+    # Parameters for H2 specific to this fit
     a1 = 0.74
     a2 = 0.87
     a3 = -0.60
-    def g1(t):
-        return (1-t**(1-n)) / (n-1) - (2 / (t+1))**(n/2) * (1 - t**(1-n/2)) / (n-2)
-    def F(t):
-        return 1/t * (a1 * np.log(t) + a2 + 1/t * a3)
-    sigma = S * F(t) * g1(t)
+    return 1/t * (a1 * np.log(t) + a2 + 1/t * a3)
+
+
+def fitf1(w, t, n):
+    return 1/(w+1)**n + 1/(t-w)**n - 1/((w+1) * (t-w))**(n/2)
+
+
+def normalizedKineticEnergy(vi=None):
+    """
+    Compute the normalized kinetic energy t = T/I given an input velocity
+    """
+    gamma_in = 1. / np.sqrt(1 - (vi/clight)**2)
+    T = (gamma_in - 1) * emass * clight**2 / jperev  # kinetic energy (in eV) of incident electron
+    t = T / I  # normalized kinetic energy
+    return t
+
+def h2_ioniz_diff_crosssection(vi=None, ke_emitted=None):
+    """
+    Compute the DIFFERENTIAL cross-section for impact ionization of H2 by e-, per David's formula
+    vi - incident electron velocity in m/s; this is passed in from warp as vxi=uxi*gaminvi etc.
+    ke_emitted - kinetic energy (in eV) of emitted secondary electron
+    """
+    t = normalizedKineticEnergy(vi)
+    w = ke_emitted / I
+    F = fitF
+    f1 = fitf1
+    sigma = S * F(t) * f1(w, t) / I
     return sigma
-    # return 4e-23  # This figure from NIST's impact ionization database: http://www.nist.gov/pml/data/ionization/
+
+
+def h2_ioniz_crosssection(vi=None):
+    """
+    Compute the TOTAL cross-section for impact ionization of H2 by e-, per David's formula
+    vi - incident electron velocity in m/s; this is passed in from warp as vxi=uxi*gaminvi etc.
+    """
+    t = normalizedKineticEnergy(vi)
+    n = fitparametern
+    F = fitF
+
+    def g1(t, n):
+        return (1 - t**(1-n)) / (n-1) - (2 / (t+1))**(n/2) * (1 - t**(1 - n/2)) / (n-2)
+
+    sigma = S * F(t) * g1(t, n)
+    return sigma
 
 ioniz.add(incident_species=beam,
           emitted_species=[h2plus, emittedelec],
