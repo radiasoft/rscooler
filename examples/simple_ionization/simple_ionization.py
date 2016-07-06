@@ -15,9 +15,8 @@ from scipy.optimize import newton
 from sys import exit
 
 diagDir = 'diags/xySlice/hdf5'
-solvertype = 'magnetostatic'
-# solvertype = 'electrostatic'
-fieldperiod = 100  # number of steps between outputting fields
+solvertype = ['magnetostatic']
+# solvertype = ['electrostatic']
 outputFields = True
 # outputFields = False
 
@@ -62,12 +61,12 @@ beam.ibeam = 1e-6
 ### 3D Simulation Parameters ###
 ################################
 
-#Set cells
+# Set cells
 w3d.nx = 64
 w3d.ny = 64
 w3d.nz = 32
 
-#Set boundaries
+# Set boundaries
 w3d.xmmin = -0.16
 w3d.xmmax = 0.16
 w3d.ymmin = -0.16
@@ -90,25 +89,39 @@ top.ibpush = 2  # 0:off, 1:fast, 2:accurate
 w3d.l_inj_exact = True
 w3d.l_inj_area = False
 
-# w3d.solvergeom = w3d.XYZgeom
-w3d.solvergeom = w3d.RZgeom
+w3d.solvergeom = w3d.XYZgeom
+# w3d.solvergeom = w3d.RZgeom
 
+# w3d.bound0 = dirichlet
+# w3d.boundnz = dirichlet
 w3d.bound0 = periodic
 w3d.boundnz = periodic
 w3d.boundxy = neumann
 
-if solvertype == 'electrostatic':
+package("w3d")
+generate()
+
+# fieldperiod = 5e-9 // top.dt  # number of steps between outputting fields
+fieldperiod = 1  # number of steps between outputting fields
+diags = []
+fieldDiags = []
+solvers = []
+
+if 'electrostatic' in solvertype:
     solver = MultiGrid3D()
-    diagF = FieldDiagnostic.ElectrostaticFields(solver=solver, top=top, period=fieldperiod)
-elif solvertype == 'magnetostatic':
+    solvers.append(solver)
+    fieldDiags += [FieldDiagnostic.ElectrostaticFields(solver=solver, top=top, w3d=w3d, period=fieldperiod)]
+if 'magnetostatic' in solvertype:
     solver = MagnetostaticMG()
-    diagF = FieldDiagnostic.MagnetostaticFields(solver=solver, top=top, period=fieldperiod)
-if solver is not None:
+    solvers.append(solver)
+    fieldDiags += [FieldDiagnostic.MagnetostaticFields(solver=solver, top=top, w3d=w3d, period=fieldperiod)]
+
+for solver in solvers:
     solver.mgtol = [0.01] * 3
     registersolver(solver)
 
-    if outputFields is True:
-        installafterstep(diagF.write)
+if outputFields is True:
+    diags += fieldDiags
 
 
 def generateDist():
@@ -232,7 +245,7 @@ ioniz.add(incident_species=beam,
         #   l_verbose=True,
           ndens=target_density)
 
-derivqty() #Sets addition derived parameters (such as beam.vbeam)
+derivqty()  # Sets addition derived parameters (such as beam.vbeam)
 
 ##########################
 ### Injection Controls ###
@@ -248,17 +261,29 @@ top.binject = 0.0008                      # Must be set even for user defined in
 ### Particle Diagnostics ###
 ############################
 
-diagP = ParticleDiagnostic( period=1, top=top, w3d=w3d,
-        species= { species.name : species for species in listofallspecies },
-        comm_world=comm_world, lparallel_output=False, write_dir = diagDir[:-4] )
-installafterstep( diagP.write )
+diagP = ParticleDiagnostic(
+    period=1,
+    top=top,
+    w3d=w3d,
+    species={species.name: species for species in listofallspecies},
+    comm_world=comm_world,
+    lparallel_output=False,
+    write_dir=diagDir[:-4])
+diags += [diagP]
+
+
+def writeDiagnostics():
+    for d in diags:
+        d.write()
+
+installafterstep(writeDiagnostics)
 
 package("w3d")
 generate()
 
 step(1)
 
-diagP.write() # You really don't want 1000 diagnostic files
+writeDiagnostics()
 diagP.period = 30
 
-stept(0.5e-6)
+# stept(0.5e-6)
