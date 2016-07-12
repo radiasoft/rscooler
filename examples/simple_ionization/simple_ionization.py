@@ -14,11 +14,19 @@ from rswarp.diagnostics import FieldDiagnostic
 from rswarp.utilities.beam_distributions import createKV
 from rswarp.utilities.ionization import Ionization
 
+from warp.diagnostics import gistdummy as gist
+
 diagDir = 'diags/xySlice/hdf5'
-solvertype = ['magnetostatic']
-# solvertype = ['electrostatic']
+solvertype = []
+solvertype += ['magnetostatic']
+solvertype += ['electrostatic']
 outputFields = True
 # outputFields = False
+fieldperiod = 10  # number of steps between outputting fields
+
+solvertolerance = 0.01
+
+simulateIonization = True
 
 
 def cleanupPrevious(outputDirectory=diagDir):
@@ -34,12 +42,12 @@ def cleanupPrevious(outputDirectory=diagDir):
 
 cleanupPrevious('diags/')
 
-#########################
-### Initialize Plots  ###
-#########################
+#####################################################
+### Initialize Warp output (mostly disabling it)  ###
+#####################################################
 
-def setup():
-    pass
+top.lprntpara = False  # Do not print parameters when generating w3d
+top.lpsplots = top.never  # Never generate plots
 
 ##########################################
 ### Create Beam and Set its Parameters ###
@@ -51,7 +59,9 @@ beam_beta = np.sqrt(1-1/beam_gamma**2)
 top.lrelativ = True
 top.relativity = 1
 
-beam = Species(type=Electron, name='e-', fselfb=beam_beta * clight)
+sw = 1
+
+beam = Species(type=Electron, name='e-', fselfb=beam_beta * clight, weight=sw)
 h2plus = Species(type=Dihydrogen, charge_state=+1, name='H2+', weight=None)
 emittedelec = Species(type=Electron, name='emitted e-', weight=None)
 
@@ -81,7 +91,7 @@ top.pboundxy = absorb
 Lz = (w3d.zmmax - w3d.zmmin)
 dz =  Lz / w3d.nz
 top.dt = (dz) / (beam_beta * clight) / 3  # 3 timesteps to cross a single cell
-ptcl_per_step = beam.ibeam * top.dt // echarge  # number of particles to inject on each step
+ptcl_per_step = int(beam.ibeam * top.dt / echarge / sw)  # number of particles to inject on each step
 
 top.ibpush = 2  # 0:off, 1:fast, 2:accurate
 
@@ -89,8 +99,8 @@ top.ibpush = 2  # 0:off, 1:fast, 2:accurate
 w3d.l_inj_exact = True
 w3d.l_inj_area = False
 
-w3d.solvergeom = w3d.XYZgeom
-# w3d.solvergeom = w3d.RZgeom
+# w3d.solvergeom = w3d.XYZgeom
+w3d.solvergeom = w3d.RZgeom
 
 # w3d.bound0 = dirichlet
 # w3d.boundnz = dirichlet
@@ -101,14 +111,15 @@ w3d.boundxy = neumann
 package("w3d")
 generate()
 
-# fieldperiod = 5e-9 // top.dt  # number of steps between outputting fields
-fieldperiod = 1  # number of steps between outputting fields
 diags = []
 fieldDiags = []
 solvers = []
 
 if 'electrostatic' in solvertype:
-    solver = MultiGrid3D()
+    if w3d.solvergeom == w3d.XYZgeom:
+        solver = MultiGrid3D()
+    elif w3d.solvergeom == w3d.RZgeom:
+        solver = MultiGrid2D()
     solvers.append(solver)
     fieldDiags += [FieldDiagnostic.ElectrostaticFields(solver=solver, top=top, w3d=w3d, period=fieldperiod)]
 if 'magnetostatic' in solvertype:
@@ -117,8 +128,11 @@ if 'magnetostatic' in solvertype:
     fieldDiags += [FieldDiagnostic.MagnetostaticFields(solver=solver, top=top, w3d=w3d, period=fieldperiod)]
 
 for solver in solvers:
-    solver.mgtol = [0.01] * 3
     registersolver(solver)
+    if type(solver.mgtol) is float:
+        solver.mgtol = solvertolerance
+    else:
+        solver.mgtol = np.array([solvertolerance] * len(solver.mgtol))
 
 if outputFields is True:
     diags += fieldDiags
@@ -235,15 +249,18 @@ def h2_ioniz_crosssection(vi=None):
     sigma = S * F(t) * g1(t, n)
     return sigma
 
-ioniz.add(incident_species=beam,
-          emitted_species=[h2plus, emittedelec],
-          emitted_energy0=[lambda vi: 1, lambda vi: 1], # Array of emission energies (in eV) corresponding to emitted_species
-          emitted_energy_sigma=[lambda vi: 0, lambda vi: 0.1],
-          l_remove_target=False, # Flag for removing target particle
-          # Can this be a function of incidence parameters like energy?
-          cross_section=h2_ioniz_crosssection,
-        #   l_verbose=True,
-          ndens=target_density)
+if simulateIonization is True:
+    ioniz.add(incident_species=beam,
+              emitted_species=[h2plus, emittedelec],
+              emitted_energy0=[1, 1], # Array of emission energies (in eV) corresponding to emitted_species
+              emitted_energy_sigma=[0, 0.1],
+            #   emitted_energy0=[lambda vi: 1, lambda vi: 1], # Array of emission energies (in eV) corresponding to emitted_species
+            #   emitted_energy_sigma=[lambda vi: 0, lambda vi: 0.1],
+              l_remove_target=False, # Flag for removing target particle
+              # Can this be a function of incidence parameters like energy?
+              cross_section=h2_ioniz_crosssection,
+            #   l_verbose=True,
+              ndens=target_density)
 
 derivqty()  # Sets addition derived parameters (such as beam.vbeam)
 
