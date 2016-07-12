@@ -2,17 +2,17 @@
     A example demonstrating ionization of background H2 gas by an electron beam
 """
 from __future__ import division
-from warp_init_tools import *   # Not really used but brings in ParticleDiagnostic.
-# from warp.particles.ionization import Ionization
-from rswarp.utilities.ionization import Ionization
-from rswarp.diagnostics import FieldDiagnostic
-from rswarp.utilities.beam_distributions import createKV
 import numpy as np
 import shutil
 from shutil import os
-import random
-from scipy.optimize import newton
-from sys import exit
+
+from warp import *
+from warp.data_dumping.openpmd_diag.particle_diag import ParticleDiagnostic
+from warp.data_dumping.openpmd_diag import field_diag
+
+from rswarp.diagnostics import FieldDiagnostic
+from rswarp.utilities.beam_distributions import createKV
+from rswarp.utilities.ionization import Ionization
 
 diagDir = 'diags/xySlice/hdf5'
 solvertype = ['magnetostatic']
