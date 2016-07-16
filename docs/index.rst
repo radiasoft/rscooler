@@ -1,4 +1,4 @@
-Welcome to mcool
+Welcome to rscooler
 =================
 
 Python tools and files specific to the MCOOL SBIR project.
@@ -6,7 +6,7 @@ Python tools and files specific to the MCOOL SBIR project.
 .. toctree::
    :maxdepth: 2
 
-   mcool
+   rscooler
    modules
 
 Indices and tables
