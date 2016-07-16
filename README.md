@@ -2,9 +2,9 @@
 
 Python tools and files specific to the MCOOL SBIR project.
 
-Learn more at https://github.com/radiasoft/mcool.
+Learn more at https://github.com/radiasoft/rscooler
 
-Documentation: http://mcool.readthedocs.org/en/latest/
+Documentation (not yet available) will be found at: http://rscooler.readthedocs.org/en/latest/
 
 #### License
 
