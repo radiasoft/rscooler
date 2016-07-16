@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-u"""mcool setup script
+u"""rscooler setup script
 
 :copyright: Copyright (c) 2016 RadiaSoft LLC.  All Rights Reserved.
 :license: http://www.apache.org/licenses/LICENSE-2.0.html
@@ -7,12 +7,12 @@ u"""mcool setup script
 from pykern.pksetup import setup
 
 setup(
-    name='mcool',
+    name='rscooler',
     author='RadiaSoft LLC',
     author_email='pip@radiasoft.net',
     description='Python tools and files specific to the MCOOL SBIR project.',
     license='http://www.apache.org/licenses/LICENSE-2.0.html',
-    url='https://github.com/radiasoft/mcool',
+    url='https://github.com/radiasoft/rscooler',
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Environment :: Console',
