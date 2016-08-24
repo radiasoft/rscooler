@@ -18,8 +18,9 @@ from warp.diagnostics import gistdummy as gist
 
 diagDir = 'diags/xySlice/hdf5'
 solvertype = []
-solvertype += ['magnetostatic']
-solvertype += ['electrostatic']
+solvertype += ['EM3D']
+# solvertype += ['magnetostatic']
+# solvertype += ['electrostatic']
 outputFields = True
 # outputFields = False
 fieldperiod = 10  # number of steps between outputting fields
@@ -31,26 +32,19 @@ simulateIonization = True
 
 def cleanupPrevious(outputDirectory=diagDir):
     if os.path.exists(outputDirectory):
-        files = os.listdir(outputDirectory)
-        for file in files:
-            if os.path.isdir(outputDirectory + file):
-                shutil.rmtree(outputDirectory + file, ignore_errors=True)
-            else:
-                os.remove(outputDirectory + file)
-                # if file.endswith('.h5'):
-                #     os.remove(os.path.join(outputDirectory, file))
+        shutil.rmtree(outputDirectory, ignore_errors=True)
 
-cleanupPrevious('diags/')
+cleanupPrevious()
 
 #####################################################
-### Initialize Warp output (mostly disabling it)  ###
+# Initialize Warp output (mostly disabling it)      #
 #####################################################
 
 top.lprntpara = False  # Do not print parameters when generating w3d
 top.lpsplots = top.never  # Never generate plots
 
 ##########################################
-### Create Beam and Set its Parameters ###
+# Create Beam and Set its Parameters     #
 ##########################################
 
 beam_gamma = 116e3/511e3 + 1
@@ -59,16 +53,17 @@ beam_beta = np.sqrt(1-1/beam_gamma**2)
 top.lrelativ = True
 top.relativity = 1
 
-sw = 1
+sw = 1000
 
-beam = Species(type=Electron, name='e-', fselfb=beam_beta * clight, weight=sw)
-h2plus = Species(type=Dihydrogen, charge_state=+1, name='H2+', weight=None)
-emittedelec = Species(type=Electron, name='emitted e-', weight=None)
+# beam = Species(type=Electron, name='e-', fselfb=beam_beta * clight, weight=sw)
+beam = Species(type=Electron, name='e-', weight=sw)
+h2plus = Species(type=Dihydrogen, charge_state=+1, name='H2+', weight=1)
+emittedelec = Species(type=Electron, name='emitted e-', weight=sw)
 
 beam.ibeam = 1e-6
 
 ################################
-### 3D Simulation Parameters ###
+# 3D Simulation Parameters     #
 ################################
 
 # Set cells
@@ -126,13 +121,18 @@ if 'magnetostatic' in solvertype:
     solver = MagnetostaticMG()
     solvers.append(solver)
     fieldDiags += [FieldDiagnostic.MagnetostaticFields(solver=solver, top=top, w3d=w3d, period=fieldperiod)]
+if 'EM3D' in solvertype:
+    solver = EM3D()
+    solvers.append(solver)
+    fieldDiags += [field_diag.FieldDiagnostic(em=solver, top=top, w3d=w3d, period=fieldperiod, write_dir=diagDir)]
 
 for solver in solvers:
     registersolver(solver)
-    if type(solver.mgtol) is float:
-        solver.mgtol = solvertolerance
-    else:
-        solver.mgtol = np.array([solvertolerance] * len(solver.mgtol))
+    if hasattr(solver, 'mgtol'):
+        if type(solver.mgtol) is float:
+            solver.mgtol = solvertolerance
+        else:
+            solver.mgtol = np.array([solvertolerance] * len(solver.mgtol))
 
 if outputFields is True:
     diags += fieldDiags
@@ -174,7 +174,7 @@ def injectelectrons():
 installuserinjection(injectelectrons)
 
 ####################################
-### Ionization of background gas ###
+# Ionization of background gas     #
 ####################################
 
 ioniz = Ionization( stride=100,
@@ -265,7 +265,7 @@ if simulateIonization is True:
 derivqty()  # Sets addition derived parameters (such as beam.vbeam)
 
 ##########################
-### Injection Controls ###
+# Injection Controls     #
 ##########################
 
 # --- Specify injection of the particles
@@ -275,7 +275,7 @@ top.ainject = 0.0008                      # Must be set even for user defined in
 top.binject = 0.0008                      # Must be set even for user defined injection, doesn't seem to do anything
 
 ############################
-### Particle Diagnostics ###
+# Particle Diagnostics     #
 ############################
 
 diagP = ParticleDiagnostic(
