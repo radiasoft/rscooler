@@ -16,7 +16,6 @@ from rswarp.utilities.ionization import Ionization
 
 from warp.diagnostics import gistdummy as gist
 
-diagDir = 'diags/xySlice/hdf5'
 solvertype = []
 solvertype += ['EM3D']
 # solvertype += ['magnetostatic']
@@ -24,10 +23,17 @@ solvertype += ['EM3D']
 outputFields = True
 # outputFields = False
 fieldperiod = 10  # number of steps between outputting fields
+particleperiod = 100  # number of steps between outputting particles
 
 solvertolerance = 0.01
 
 simulateIonization = True
+# simulateIonization = False
+
+if simulateIonization is True:
+    diagDir = 'diags.with/'
+else:
+    diagDir = 'diags.without/'
 
 
 def cleanupPrevious(outputDirectory=diagDir):
@@ -99,9 +105,12 @@ w3d.solvergeom = w3d.RZgeom
 
 # w3d.bound0 = dirichlet
 # w3d.boundnz = dirichlet
+# w3d.bound0 = openbc
+# w3d.boundnz = openbc
 w3d.bound0 = periodic
 w3d.boundnz = periodic
-w3d.boundxy = neumann
+# w3d.boundxy = neumann
+w3d.boundxy = dirichlet
 
 package("w3d")
 generate()
@@ -138,28 +147,27 @@ if outputFields is True:
     diags += fieldDiags
 
 
-def generateDist():
+def generateDist(npart=ptcl_per_step, zemit=dz/5, dv_over_v=0):
     ptclTrans = createKV(
-        npart=ptcl_per_step,
+        npart=npart,
         a=0.010,
         b=0.010,
         emitx=4. * 1.e-6,
         emity=4. * 1.e-6
     )
 
-    dv_over_v = 0
     if dv_over_v > 0:
-        vzoffset = np.random.normal(scale=dv_over_v, size=ptcl_per_step)
+        vzoffset = np.random.normal(scale=dv_over_v, size=npart)
     else:
-        vzoffset = np.reshape([0.0] * ptcl_per_step, (ptcl_per_step, 1))
+        vzoffset = np.reshape(np.zeros(npart), (npart, 1))
 
-    vz = beam_beta * clight * ([1.0] * ptcl_per_step + vzoffset)
-    zemit = dz / 5  # emitting surface 1/5th of a cell forward
-    return np.column_stack((ptclTrans, [zemit] * ptcl_per_step, vz))
+    vz = beam_beta * clight * (np.ones(npart) + vzoffset)
+    zemit = zemit * np.ones(npart)
+    return np.column_stack((ptclTrans, zemit, vz))
 
 
-def injectelectrons():
-    ptclArray = generateDist()
+def injectelectrons(npart=ptcl_per_step, zoffset=dz/5):  # emitting surface 1/5th of a cell forward by default
+    ptclArray = generateDist(npart=npart, zemit=zoffset, dv_over_v=0.001)
     # Change to x and y angles to velocities
     beam.addparticles(
         x=ptclArray[:, 0],
@@ -169,6 +177,12 @@ def injectelectrons():
         vy=ptclArray[:, 3] * ptclArray[:, 5],
         vz=ptclArray[:, 5]
     )
+
+
+def preloadelectrons():
+    for i in range(0, w3d.nz):
+        injectelectrons(npart=int(34500/w3d.nz),zoffset=i*dz)
+
 
 # Install injector
 installuserinjection(injectelectrons)
@@ -190,6 +204,7 @@ ioniz = Ionization( stride=100,
                     l_verbose=True)
 
 target_density = 1.e20
+beam_ke = (beam_gamma-1) * 511e3  # in eV
 
 # ------------ e + H2 -> 2e + H2+
 
@@ -250,16 +265,13 @@ def h2_ioniz_crosssection(vi=None):
     return sigma
 
 if simulateIonization is True:
+    # e + H2 -> 2e + H2+
     ioniz.add(incident_species=beam,
               emitted_species=[h2plus, emittedelec],
               emitted_energy0=[1, 1], # Array of emission energies (in eV) corresponding to emitted_species
               emitted_energy_sigma=[0, 0.1],
-            #   emitted_energy0=[lambda vi: 1, lambda vi: 1], # Array of emission energies (in eV) corresponding to emitted_species
-            #   emitted_energy_sigma=[lambda vi: 0, lambda vi: 0.1],
               l_remove_target=False, # Flag for removing target particle
-              # Can this be a function of incidence parameters like energy?
               cross_section=h2_ioniz_crosssection,
-            #   l_verbose=True,
               ndens=target_density)
 
 derivqty()  # Sets addition derived parameters (such as beam.vbeam)
@@ -285,7 +297,7 @@ diagP = ParticleDiagnostic(
     species={species.name: species for species in listofallspecies},
     comm_world=comm_world,
     lparallel_output=False,
-    write_dir=diagDir[:-4])
+    write_dir=diagDir+'/xySlice/')
 diags += [diagP]
 
 
@@ -298,9 +310,10 @@ installafterstep(writeDiagnostics)
 package("w3d")
 generate()
 
+preloadelectrons()  # load full beam in before first step
 step(1)
 
 writeDiagnostics()
-diagP.period = 30
+diagP.period = particleperiod
 
-# stept(0.5e-6)
+stept(0.5e-6)
