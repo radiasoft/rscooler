@@ -16,6 +16,9 @@ from rswarp.utilities.ionization import Ionization
 
 from warp.diagnostics import gistdummy as gist
 
+import rswarp.utilities.h2crosssections as h2crosssections
+from rswarp.utilities.h2crosssections import h2_ioniz_crosssection
+
 solvertype = []
 solvertype += ['EM3D']
 # solvertype += ['magnetostatic']
@@ -66,16 +69,16 @@ beam = Species(type=Electron, name='e-', weight=sw)
 h2plus = Species(type=Dihydrogen, charge_state=+1, name='H2+', weight=1)
 emittedelec = Species(type=Electron, name='emitted e-', weight=sw)
 
-beam.ibeam = 1e-6
+beam.ibeam = 1e-3
 
 ################################
 # 3D Simulation Parameters     #
 ################################
 
 # Set cells
-w3d.nx = 64
-w3d.ny = 64
-w3d.nz = 32
+w3d.nx = 32
+w3d.ny = 32
+w3d.nz = 64
 
 # Set boundaries
 w3d.xmmin = -0.16
@@ -206,71 +209,14 @@ ioniz = Ionization( stride=100,
 target_density = 1.e20
 beam_ke = (beam_gamma-1) * 511e3  # in eV
 
-# ------------ e + H2 -> 2e + H2+
-
-bohr_radius = 5.29177e-11  # Bohr Radius
-I = 15.42593  # Threshold ionization energy (in eV), from the NIST Standard Reference Database (via NIST Chemistry WebBook)
-R = 13.60569  # Rydberg energy (in eV)
-S = 4 * np.pi * bohr_radius**2 * (R/I)**2
-fitparametern = 2.4  # species-dependent fitting parameter
-
-def fitF(t):
-    # Parameters for H2 specific to this fit
-    a1 = 0.74
-    a2 = 0.87
-    a3 = -0.60
-    return 1/t * (a1 * np.log(t) + a2 + 1/t * a3)
-
-
-def fitf1(w, t, n):
-    return 1/(w+1)**n + 1/(t-w)**n - 1/((w+1) * (t-w))**(n/2)
-
-
-def normalizedKineticEnergy(vi=None):
-    """
-    Compute the normalized kinetic energy t = T/I given an input velocity
-    """
-    gamma_in = 1. / np.sqrt(1 - (vi/clight)**2)
-    T = (gamma_in - 1) * emass * clight**2 / jperev  # kinetic energy (in eV) of incident electron
-    t = T / I  # normalized kinetic energy
-    return t
-
-def h2_ioniz_diff_crosssection(vi=None, ke_emitted=None):
-    """
-    Compute the DIFFERENTIAL cross-section for impact ionization of H2 by e-, per David's formula
-    vi - incident electron velocity in m/s; this is passed in from warp as vxi=uxi*gaminvi etc.
-    ke_emitted - kinetic energy (in eV) of emitted secondary electron
-    """
-    t = normalizedKineticEnergy(vi)
-    w = ke_emitted / I
-    F = fitF
-    f1 = fitf1
-    sigma = S * F(t) * f1(w, t) / I
-    return sigma
-
-
-def h2_ioniz_crosssection(vi=None):
-    """
-    Compute the TOTAL cross-section for impact ionization of H2 by e-, per David's formula
-    vi - incident electron velocity in m/s; this is passed in from warp as vxi=uxi*gaminvi etc.
-    """
-    t = normalizedKineticEnergy(vi)
-    n = fitparametern
-    F = fitF
-
-    def g1(t, n):
-        return (1 - t**(1-n)) / (n-1) - (2 / (t+1))**(n/2) * (1 - t**(1 - n/2)) / (n-2)
-
-    sigma = S * F(t) * g1(t, n)
-    return sigma
 
 if simulateIonization is True:
     # e + H2 -> 2e + H2+
     ioniz.add(incident_species=beam,
               emitted_species=[h2plus, emittedelec],
-              emitted_energy0=[1, 1], # Array of emission energies (in eV) corresponding to emitted_species
-              emitted_energy_sigma=[0, 0.1],
-              l_remove_target=False, # Flag for removing target particle
+              emitted_energy0=[0, h2crosssections.ejectedEnergy],  # Array of emission energies (in eV) corresponding to emitted_species
+              emitted_energy_sigma=[0, 0],
+              l_remove_target=False,  # Flag for removing target particle
               cross_section=h2_ioniz_crosssection,
               ndens=target_density)
 
