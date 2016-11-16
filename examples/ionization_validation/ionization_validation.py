@@ -21,11 +21,13 @@ from rswarp.utilities.ionization import Ionization
 
 from warp.diagnostics import gistdummy as gist
 
-import rswarp.utilities.h2crosssections as h2crosssections
-from rswarp.utilities.h2crosssections import h2_ioniz_crosssection
+import rsoopic.h2crosssections as h2crosssections
+from rsoopic.h2crosssections import h2_ioniz_crosssection
 
 solvertype = []
-solvertype += ['magnetostatic']
+# no field solve
+# top.fstype = -1
+# solvertype += ['magnetostatic']
 solvertype += ['electrostatic']
 # outputFields = True
 outputFields = False
@@ -69,6 +71,22 @@ parser.add_argument(
     help='Electon beam kinetic energy (eV)',
     default=1000
 )
+parser.add_argument(
+    '--dt',
+    type=float,
+    action='store',
+    dest='dt',
+    help='Time step (s)',
+    default=0.1e-9
+)
+parser.add_argument(
+    '--time',
+    type=float,
+    action='store',
+    dest='time',
+    help='Simulation time (s)',
+    default=100e-9
+)
 args = parser.parse_args()
 beam_ke = args.beamke  # beam kinetic energy, in eV
 beam_gamma = beam_ke/511e3 + 1
@@ -81,9 +99,9 @@ top.relativity = 1
 sw = 100
 
 # beam = Species(type=Electron, name='e-', fselfb=beam_beta * clight, weight=sw)
-beam = Species(type=Electron, name='e-', weight=sw)
-h2plus = Species(type=Dihydrogen, charge_state=+1, name='H2+', weight=sw)
-emittedelec = Species(type=Electron, name='emitted e-', weight=sw)
+beam = Species(type=Electron, name='e-', weight=0)
+h2plus = Species(type=Dihydrogen, charge_state=+1, name='H2+', weight=0)
+emittedelec = Species(type=Electron, name='emitted e-', weight=0)
 
 beam.ibeam = 0.1e-3
 
@@ -110,7 +128,8 @@ top.pboundxy = absorb
 
 Lz = (w3d.zmmax - w3d.zmmin)
 dz =  Lz / w3d.nz
-top.dt = (dz) / (beam_beta * clight) / 3  # 3 timesteps to cross a single cell
+# top.dt = (dz) / (beam_beta * clight) / 3  # 3 timesteps to cross a single cell
+top.dt = args.dt
 ptcl_per_step = int(beam.ibeam * top.dt / echarge / sw)  # number of particles to inject on each step
 
 top.ibpush = 1  # 0:off, 1:fast, 2:accurate
@@ -191,7 +210,6 @@ def generateDist(npart=ptcl_per_step, zemit=dz/5, dv_over_v=0):
 
 def injectelectrons(npart=ptcl_per_step, zoffset=w3d.dz/5):  # emitting surface 1/5th of a cell forward by default
     ptclArray = generateDist(npart=npart, zemit=zoffset, dv_over_v=0.001)
-    # ptclArray[:, 5] = -1.0 * ptclArray[:, 5]
     beam.addparticles(
         x=ptclArray[:, 0],
         y=ptclArray[:, 2],
@@ -285,7 +303,7 @@ step(1)
 writeDiagnostics()
 diagP.period = particleperiod
 
-stept(100e-9)
+stept(args.time)
 
 # Print a bell 3 times to indicate end of run
 for i in range(0, 3):
