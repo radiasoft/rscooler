@@ -1,4 +1,5 @@
 \def\half{\frac{1}{2}}
+\def\ave#1{{\langle #1\rangle}}
 \documentclass[acus]{article}
 \usepackage[margin=1in]{geometry}
 \RequirePackage{geometry,color,graphicx}
@@ -8,7 +9,29 @@
 \title{IBS notes for JSPEC}
 \maketitle
 
-We document the model implemented in JSPEC
+We document the model implemented in JSPEC.
+
+The model is based on that of Martini and implemented in Betacool.
+Let us consider the evolution of the emittances which are defined as
+
+\begin{eqnarray}
+\epsilon_x &=& \gamma_x x^2 + 2\alpha_x x x' + \beta_x x^2 \\
+\epsilon_y &=& \gamma_y y^2 + 2\alpha_y y y' + \beta_y y^2 \\
+\epsilon_z &=& \gamma_z z^2 + 2\alpha_z z \delta + \beta_z \delta^2
+\end{eqnarray}
+where $\delta = \frac{E-E_0}{E_0}$.  The IBS growth rates are defined as
+\begin{equation}
+\frac{1}{\tau_{a}} = \frac{1}{\epsilon_{a}}\frac{d\epsilon_{a}}{dt}
+\end{equation}
+with $a=1,2,3$.
+
+These rates are given by Martini (implemented in Betacool and JSPEC) as
+
+\begin{equation}
+\frac{1}{\tau_x} = \ave{\frac{A}{2}\left[f_2 + (d^2 + \tilde{d}^2)f_1\right]}
+\end{equation}
+(check factor of 2)
+
 
 \begin{thebibliography}{3}
 \end{thebibliography}
