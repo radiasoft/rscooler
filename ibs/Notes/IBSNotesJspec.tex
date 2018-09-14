@@ -23,14 +23,24 @@ where $\delta = \frac{E-E_0}{E_0}$.  The IBS growth rates are defined as
 \begin{equation}
 \frac{1}{\tau_{a}} = \frac{1}{\epsilon_{a}}\frac{d\epsilon_{a}}{dt}
 \end{equation}
-with $a=1,2,3$.
+with $a=x,y,z$.  In the coupled case, we say that $a=1,2,3$.  With coupling, the emittance definition is
+more complicated, coupling horizontal and vertical, for example.
 
 These rates are given by Martini (implemented in Betacool and JSPEC) as
 
+\begin{eqnarray}
+\frac{1}{\tau_x} &=& \ave{\frac{A}{2}\left[f_2 + (d^2 + \tilde{d}^2)f_1\right]} \\
+\frac{1}{\tau_y} &=& \ave{\frac{A}{2} f_3} \\
+\frac{1}{\tau_z} &=& \ave{\frac{A}{2}(1-d^2)f_1}
+\end{eqnarray}
+(check factor of 2) with
 \begin{equation}
-\frac{1}{\tau_x} = \ave{\frac{A}{2}\left[f_2 + (d^2 + \tilde{d}^2)f_1\right]}
+A=\frac{\sqrt{1+\alpha_x^2}\sqrt{1+\alpha_y^2}c r_i^2 \lambda}{16\pi\sqrt{\pi}\sigma_{x\beta}\sigma_{x'\beta}\sigma_y\sigma_{y'}\beta^3\gamma^4}
 \end{equation}
-(check factor of 2)
+The quantities $f_i$ are given by the 3-D integral
+\begin{equation}
+f_i = k_i\int\int\int \sin\mu g_i(\mu,\nu) e^{-D(\mu,\nu)z}\ln(1+z^2) d\nu d\mu dz
+\end{equation} 
 
 
 \begin{thebibliography}{3}
