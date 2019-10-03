@@ -22,6 +22,7 @@ class ebunch:
         self.n_e     = 2e15     # /m^3, electron density
         self.omega_p = np.sqrt(4*constants.pi*self.n_e*self.eq**2/self.m_e)
 
+         
         self.v_e = 0.0 #Provide a space for v_e to mutate
 
         #The scale factor common to all of the force calculations    
@@ -32,7 +33,7 @@ class ebunch:
         self.l_cool  = 10    #Length of the cooling section (Default in Sirepo JSPEC)
 
         #These are RMS spreads of e velocity
-        self.Delta_trans = 400   # Transverse spread(what's a reasonable value?)
+        self.Delta_trans = 4.2e5   # Transverse spread(what's a reasonable value?)
         self.Delta_long = 1e5    # Longitudinal spread
         self.Delta_e = np.sqrt(self.Delta_long**2 + self.Delta_trans**2)
     
@@ -94,17 +95,17 @@ class ionbunch:
             
             integrand = -self.V_long * 2 * EB.F_const 
             integrand /= np.sqrt(2 * constants.pi) * EB.Delta_e**3
-            #Set this up to integrate over a delta function
-            if v_e == self.V_long:
-                integrand *= np.exp(- self.V_long**2 /(2 * EB.Delta_e**2))
-            else:
-                integrand = 0.0                                                    
+            integrand *= np.exp(- self.V_long**2 /(2 * EB.Delta_e**2))
+            #It's going to do an integral anyway, so let the function 
+            # integrate over something independent that adds up to 1
+            integrand *= stats.norm.pdf(v_e,0,1.0)
+        
                            
         elif self.V_ion > (100.0 * EB.Delta_long):                      
             #When V_ion >> Delta_long
             integrand = (3.0 * self.V_trans**2 * (self.V_long-v_e))
             integrand /= (U**5) 
-            integrand += 2.0 * (self.V_long-v_e) / (U**3)
+            integrand += 2.0 * (self.V_long-v_e) / (U**3) #extra term
             integrand *= stats.norm.pdf(v_e, 0, EB.Delta_e)
 
         else:
@@ -137,26 +138,42 @@ def main():
     EB = ebunch()
     #Change any initial conditions if you want
     
+#    EB.Delta_long = 1000
+#    EB.Delta_trans = 1.0
+    
     vec_trans = []
     vec_long = []
     
-    for i,x in enumerate(np.linspace(0,6e5,20)):
-        
-        IB = ionbunch()
-        IB.v_long = x
-        IB.v_trans = 0.0
-        IB.Z = 1
+    matrix_trans = np.ndarray(shape=(20,20))
+    matrix_long = np.ndarray(shape=(20,20))
     
-        F_trans = IB.Force_transverse(EB)       
-        F_long = IB.Force_longitudinal(EB)
 
-        if i < 5:
-            print(F_trans)
-            print(F_long)
-    
-        vec_trans.append(F_trans)
-        vec_long.append(F_long)
-     
+    for i,x in enumerate(np.linspace(0,6e5,20)):
+        for j,y in enumerate(np.linspace(0,6e5,20)):
+        
+            IB = ionbunch()
+            IB.V_long = x
+            IB.V_trans = y
+            
+            #This is a fudge factor to make the units *look* right.
+            # I need to evaluate units
+            
+            F_trans = IB.Force_transverse(EB)*1.8E-36
+            F_long = IB.Force_longitudinal(EB)*1.8E-36
+
+#            if i < 5:
+#                print(F_trans)
+#                print(F_long)
+            
+            #Grab one row from the matrix to plot 1D
+            if j == 4:          
+                vec_trans.append(F_trans)
+                vec_long.append(F_long)
+                
+            matrix_trans[i,j] = F_trans
+            matrix_long[i,j] = F_long
+        
+        
     plt.subplot(211)
     plt.plot(np.linspace(0,6e5,20),vec_long)
     plt.xlabel(r"$V_{ion,\parallel}$(m/s)",fontsize=15)
@@ -167,6 +184,20 @@ def main():
     plt.ylabel(r"$-F_{\bot}$ (eV/m)",fontsize=15)
     plt.tight_layout()
     plt.show()
+
+    plt.subplot(121)
+    plt.imshow(matrix_long,origin='lower',interpolation='nearest',cmap='jet')
+    plt.title(r"$F_{\parallel}$")
+    plt.xlabel(r"$V_{\parallel}$ (m/s)")
+    plt.ylabel(r"$V_{\bot}$ (m/s)")
+    plt.subplot(122)
+    plt.imshow(matrix_trans,origin='lower',interpolation='nearest',cmap='jet')
+    plt.title(r"$F_{\bot}$")
+    plt.xlabel(r"$V_{\parallel}$ (m/s)")
+    plt.ylabel(r"$V_{\bot}$ (m/s)")
+    plt.tight_layout()
+    plt.show()
+
         
 if __name__ == "__main__":
     main()
